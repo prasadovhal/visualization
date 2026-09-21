@@ -83,38 +83,35 @@ class RandomWalk:
 class MonteCarlo:
     name = "Monte Carlo"
     description = (
-        "Each iteration uniformly samples a batch of random candidates from "
-        "the entire search space and evaluates them. The global best across all "
-        "iterations is kept. Simple but surprisingly effective with enough samples."
+        "Each iteration one random candidate is uniformly sampled from the entire "
+        "search space and evaluated. If it beats the current best it becomes the "
+        "new best. Simple, memoryless, and surprisingly useful as a baseline."
     )
-    defaults = {"n_samples": 20}
+    defaults = {}
 
     def initialize(self, config, fn):
         rng = np.random.default_rng(config["seed"])
-        n = config.get("n_samples", 20)
-        pop = _rand_pop(n, config["dims"], config["bounds"], rng)
-        vals = _eval_all(pop, fn)
-        bi = _best(vals)
+        dims, bounds = config["dims"], config["bounds"]
+        pos = rng.uniform(bounds[0], bounds[1], dims)
+        val = fn(pos)
         return dict(
-            iteration=0, candidates=pop, values=vals,
-            best_pos=pop[bi].copy(), best_val=float(vals[bi]),
-            history=[float(vals[bi])], n_evals=n, rng=rng,
+            iteration=0, candidates=pos[np.newaxis].copy(), values=np.array([val]),
+            best_pos=pos.copy(), best_val=val,
+            history=[val], n_evals=1, rng=rng,
         )
 
     def step(self, state, config, fn):
-        rng = state["rng"]
-        n = config.get("n_samples", 20)
-        pop = _rand_pop(n, config["dims"], config["bounds"], rng)
-        vals = _eval_all(pop, fn)
-        bi = _best(vals)
-        best_val = float(vals[bi]) if float(vals[bi]) < state["best_val"] else state["best_val"]
-        best_pos = pop[bi].copy() if float(vals[bi]) < state["best_val"] else state["best_pos"].copy()
+        rng, bounds = state["rng"], config["bounds"]
+        pos = rng.uniform(bounds[0], bounds[1], config["dims"])
+        val = fn(pos)
+        best_val = val if val < state["best_val"] else state["best_val"]
+        best_pos = pos.copy() if val < state["best_val"] else state["best_pos"].copy()
         return {**state,
                 "iteration": state["iteration"] + 1,
-                "candidates": pop, "values": vals,
+                "candidates": pos[np.newaxis].copy(), "values": np.array([val]),
                 "best_pos": best_pos, "best_val": best_val,
                 "history": state["history"] + [best_val],
-                "n_evals": state["n_evals"] + n}
+                "n_evals": state["n_evals"] + 1}
 
 
 # ─── Metropolis Monte Carlo ───────────────────────────────────────────────────
