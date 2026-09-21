@@ -1,6 +1,5 @@
 import ast
 import math
-import time
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
@@ -132,7 +131,7 @@ st.markdown("""
 
 # ─── session state ────────────────────────────────────────────────────────────
 
-for k, v in {"opt_state": None, "is_running": False, "run_key": ""}.items():
+for k, v in {"opt_state": None, "all_steps": None, "run_key": ""}.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -250,20 +249,19 @@ if fn_name == "Custom..." and custom_fn is None:
 config  = {"dims": dims, "bounds": (b_min, b_max), "seed": seed, **extra}
 run_key = f"{algo_name}|{fn_name}|{dims}|{custom_expr}"
 if st.session_state.run_key != run_key:
-    st.session_state.opt_state  = None
-    st.session_state.is_running = False
-    st.session_state.run_key    = run_key
+    st.session_state.opt_state = None
+    st.session_state.all_steps = None
+    st.session_state.run_key   = run_key
 
 # ══════════════════════════ CENTRE: plot ══════════════════════════════════════
 
 with plot_col:
 
     # — control buttons + speed —
-    b1, b2, b3, b4, _sp, spd = st.columns([1, 1, 1, 1, 0.2, 3.2])
+    b1, b2, b3, _sp, spd = st.columns([1, 1, 1, 0.2, 3.2])
     run_btn   = b1.button("▶ Run",   type="primary", use_container_width=True)
-    pause_btn = b2.button("⏸ Pause",                  use_container_width=True)
-    step_btn  = b3.button("⏭ Step",                   use_container_width=True)
-    reset_btn = b4.button("↺ Reset",                  use_container_width=True)
+    step_btn  = b2.button("⏭ Step",                  use_container_width=True)
+    reset_btn = b3.button("↺ Reset",                 use_container_width=True)
 
     with spd:
         sa, sb, sc = st.columns([1, 5, 1])
@@ -273,32 +271,42 @@ with plot_col:
         sc.markdown("<p style='margin-top:8px;font-size:0.8rem'>🚀</p>",
                     unsafe_allow_html=True)
 
-    delay = round(0.8 * (0.01 / 0.8) ** ((speed_val - 1) / 9), 3)
+    # speed → Plotly frame duration (ms)
+    _raw_delay = round(0.8 * (0.01 / 0.8) ** ((speed_val - 1) / 9), 3)
+    frame_ms   = max(30, int(_raw_delay * 1000))
 
     # — button logic —
     if reset_btn:
-        st.session_state.opt_state  = None
-        st.session_state.is_running = False
-    if pause_btn:
-        st.session_state.is_running = False
-    if run_btn:
-        st.session_state.is_running = True
-        if st.session_state.opt_state is None:
-            st.session_state.opt_state = algo.initialize(config, fn_obj.fn)
+        st.session_state.opt_state = None
+        st.session_state.all_steps = None
+
     if step_btn:
-        st.session_state.is_running = False
+        st.session_state.all_steps = None          # exit animated mode
         if st.session_state.opt_state is None:
             st.session_state.opt_state = algo.initialize(config, fn_obj.fn)
         elif st.session_state.opt_state["iteration"] < n_iters:
             st.session_state.opt_state = algo.step(
                 st.session_state.opt_state, config, fn_obj.fn)
 
-    state = st.session_state.opt_state
+    if run_btn:
+        # Compute ALL remaining steps up-front; Plotly plays them client-side
+        if st.session_state.opt_state is None:
+            st.session_state.opt_state = algo.initialize(config, fn_obj.fn)
+        cur = st.session_state.opt_state
+        steps = [cur]
+        while cur["iteration"] < n_iters:
+            cur = algo.step(cur, config, fn_obj.fn)
+            steps.append(cur)
+        st.session_state.opt_state = cur
+        st.session_state.all_steps = steps
+
+    state     = st.session_state.opt_state
+    all_steps = st.session_state.all_steps
 
     # — progress bar —
     if state:
         pct    = min(state["iteration"] / n_iters, 1.0)
-        status = "🟢 Running" if st.session_state.is_running else \
+        status = "✅ Done" if all_steps is not None else \
                  ("✅ Done" if state["iteration"] >= n_iters else "⏸ Paused")
         st.progress(pct, text=f"{status}  —  iteration {state['iteration']} / {n_iters}")
     else:
@@ -333,7 +341,7 @@ with plot_col:
             return xs, ys, Z
         return _grid_2d(fn_name, b_min, b_max)
 
-    # — color palette —
+    # — shared styling —
     _L = dict(
         template="simple_white",
         plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
@@ -344,97 +352,189 @@ with plot_col:
     )
     C_CURVE, C_AGENT, C_BEST, C_CONV = "#2563EB", "#DC2626", "#D97706", "#059669"
 
-    # — stable y-range for 1D (computed once from the curve, not per-step) —
+    # — stable curve / y-range for 1D —
     _xs1d, _ys1d = _get_curve_1d()
-    _y_pad  = max(abs(_ys1d.max() - _ys1d.min()) * 0.12, 0.1)
-    _y_lo   = float(_ys1d.min() - _y_pad)
-    _y_hi   = float(_ys1d.max() + _y_pad)
+    _y_pad = max(abs(_ys1d.max() - _ys1d.min()) * 0.12, 0.1)
+    _y_lo  = float(_ys1d.min() - _y_pad)
+    _y_hi  = float(_ys1d.max() + _y_pad)
 
-    # — 1D plot —
-    def make_1d(state):
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=_xs1d, y=_ys1d, mode="lines", name=fn_obj.name,
-                                 line=dict(color=C_CURVE, width=2.5)))
-        if state:
-            cx, cy = state["candidates"][:, 0], state["values"]
-            if algo_name == "Ant Colony Optimization":
-                fig.add_trace(go.Scatter(
-                    x=cx, y=cy, mode="text",
-                    text=["🐜"] * len(cx), textfont=dict(size=16),
-                    name="Ants"))
-            else:
-                fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", name="Current",
-                                         marker=dict(color=C_AGENT, size=13, symbol="circle",
-                                                     line=dict(color="white", width=1.5))))
-            fig.add_trace(go.Scatter(
-                x=[state["best_pos"][0]], y=[state["best_val"]],
-                mode="markers", name="Best",
-                marker=dict(color=C_BEST, size=19, symbol="star",
-                            line=dict(color="#78350F", width=1.5))))
-        fig.update_layout(**_L, height=400,
-                          title=dict(text=f"<b>{fn_obj.name}</b> — 1D landscape",
-                                     font=dict(size=14, color="#1E293B")),
-                          xaxis=dict(title="x", range=[b_min, b_max],
-                                     fixedrange=True,
-                                     showgrid=True, gridcolor="#F1F5F9",
-                                     zeroline=True, zerolinecolor="#CBD5E1"),
-                          yaxis=dict(title="f(x)", range=[_y_lo, _y_hi],
-                                     fixedrange=True,
-                                     showgrid=True, gridcolor="#F1F5F9"))
+    # ── helpers that build the two dynamic traces for a single state ──
+    def _agent_trace_1d(s):
+        cx, cy = s["candidates"][:, 0].tolist(), s["values"].tolist()
+        if algo_name == "Ant Colony Optimization":
+            return go.Scatter(x=cx, y=cy, mode="text",
+                              text=["🐜"] * len(cx), textfont=dict(size=16), name="Ants")
+        return go.Scatter(x=cx, y=cy, mode="markers", name="Current",
+                          marker=dict(color=C_AGENT, size=13, symbol="circle",
+                                      line=dict(color="white", width=1.5)))
+
+    def _best_trace_1d(s):
+        return go.Scatter(x=[float(s["best_pos"][0])], y=[float(s["best_val"])],
+                          mode="markers", name="Best",
+                          marker=dict(color=C_BEST, size=19, symbol="star",
+                                      line=dict(color="#78350F", width=1.5)))
+
+    def _agent_trace_2d(s):
+        cx = s["candidates"][:, 0].tolist(); cy = s["candidates"][:, 1].tolist()
+        if algo_name == "Ant Colony Optimization":
+            return go.Scatter(x=cx, y=cy, mode="text",
+                              text=["🐜"] * len(cx), textfont=dict(size=18), name="Ants")
+        label = "Agent" if algo_name in SINGLE_AGENT else "Population"
+        return go.Scatter(x=cx, y=cy, mode="markers", name=label,
+                          marker=dict(color="white", size=10, symbol="circle",
+                                      line=dict(color="#1E293B", width=1.5)))
+
+    def _best_trace_2d(s):
+        return go.Scatter(x=[float(s["best_pos"][0])], y=[float(s["best_pos"][1])],
+                          mode="markers", name="Best",
+                          marker=dict(color=C_BEST, size=19, symbol="star",
+                                      line=dict(color="#78350F", width=1.5)))
+
+    # ── animation config dicts ──
+    def _anim_cfg():
+        return dict(frame=dict(duration=frame_ms, redraw=False),
+                    fromcurrent=True,
+                    transition=dict(duration=int(frame_ms * 0.5), easing="linear"))
+
+    def _imm_cfg():
+        return dict(frame=dict(duration=0, redraw=False),
+                    mode="immediate", transition=dict(duration=0))
+
+    def _anim_menus():
+        return [dict(
+            type="buttons", showactive=False, direction="left",
+            x=0.0, y=1.13, xanchor="left", yanchor="top", pad=dict(r=8, t=0),
+            buttons=[
+                dict(label="▶", method="animate", args=[None, _anim_cfg()]),
+                dict(label="⏸", method="animate",
+                     args=[[None], dict(frame=dict(duration=0, redraw=False),
+                                        mode="immediate")]),
+            ]
+        )]
+
+    def _anim_slider(n):
+        every = max(1, n // 20)   # show at most ~20 tick labels
+        return [dict(
+            active=0, x=0.0, len=1.0, y=0, pad=dict(b=10, t=50),
+            currentvalue=dict(prefix="Step: ", visible=True, xanchor="center",
+                              font=dict(size=11, color="#64748B")),
+            transition=dict(duration=int(frame_ms * 0.5), easing="linear"),
+            steps=[dict(method="animate", args=[[str(i)], _imm_cfg()],
+                        label=str(i) if i % every == 0 else "")
+                   for i in range(n)],
+        )]
+
+    # ── animated figure (▶ Run mode) ──
+    def make_animated_1d(steps):
+        s0 = steps[0]
+        frames = [go.Frame(data=[_agent_trace_1d(s), _best_trace_1d(s)],
+                           traces=[1, 2], name=str(i))
+                  for i, s in enumerate(steps)]
+        fig = go.Figure(
+            data=[go.Scatter(x=_xs1d.tolist(), y=_ys1d.tolist(), mode="lines",
+                             name=fn_obj.name, line=dict(color=C_CURVE, width=2.5)),
+                  _agent_trace_1d(s0), _best_trace_1d(s0)],
+            frames=frames,
+        )
+        fig.update_layout(
+            **_L, height=430,
+            title=dict(text=f"<b>{fn_obj.name}</b> — 1D landscape",
+                       font=dict(size=14, color="#1E293B")),
+            xaxis=dict(title="x", range=[b_min, b_max], fixedrange=True,
+                       showgrid=True, gridcolor="#F1F5F9",
+                       zeroline=True, zerolinecolor="#CBD5E1"),
+            yaxis=dict(title="f(x)", range=[_y_lo, _y_hi], fixedrange=True,
+                       showgrid=True, gridcolor="#F1F5F9"),
+            updatemenus=_anim_menus(),
+            sliders=_anim_slider(len(steps)),
+            margin=dict(l=12, r=12, t=44, b=60),
+        )
         return fig
 
-    # — 2D plot —
-    def make_2d(state):
-        xs, ys, Z = _get_grid_2d()
+    def make_animated_2d(steps):
+        xs_g, ys_g, Z_g = _get_grid_2d()
+        s0 = steps[0]
+        frames = [go.Frame(data=[_agent_trace_2d(s), _best_trace_2d(s)],
+                           traces=[1, 2], name=str(i))
+                  for i, s in enumerate(steps)]
+        fig = go.Figure(
+            data=[go.Contour(x=xs_g, y=ys_g, z=Z_g, colorscale="RdYlBu_r",
+                             contours=dict(coloring="heatmap", showlabels=False),
+                             showscale=True, colorbar=dict(thickness=12, len=0.85)),
+                  _agent_trace_2d(s0), _best_trace_2d(s0)],
+            frames=frames,
+        )
+        fig.update_layout(
+            **_L, height=470,
+            title=dict(text=f"<b>{fn_obj.name}</b> — 2D landscape",
+                       font=dict(size=14, color="#1E293B")),
+            xaxis=dict(title="x₁", range=[b_min, b_max], fixedrange=True, showgrid=False),
+            yaxis=dict(title="x₂", range=[b_min, b_max], fixedrange=True, showgrid=False),
+            updatemenus=_anim_menus(),
+            sliders=_anim_slider(len(steps)),
+            margin=dict(l=12, r=12, t=44, b=60),
+        )
+        return fig
+
+    # ── static figure (⏭ Step mode) ──
+    def make_static_1d(state):
         fig = go.Figure()
-        fig.add_trace(go.Contour(x=xs, y=ys, z=Z, colorscale="RdYlBu_r",
+        fig.add_trace(go.Scatter(x=_xs1d.tolist(), y=_ys1d.tolist(), mode="lines",
+                                 name=fn_obj.name, line=dict(color=C_CURVE, width=2.5)))
+        if state:
+            fig.add_trace(_agent_trace_1d(state))
+            fig.add_trace(_best_trace_1d(state))
+        fig.update_layout(
+            **_L, height=400,
+            title=dict(text=f"<b>{fn_obj.name}</b> — 1D landscape",
+                       font=dict(size=14, color="#1E293B")),
+            xaxis=dict(title="x", range=[b_min, b_max], fixedrange=True,
+                       showgrid=True, gridcolor="#F1F5F9",
+                       zeroline=True, zerolinecolor="#CBD5E1"),
+            yaxis=dict(title="f(x)", range=[_y_lo, _y_hi], fixedrange=True,
+                       showgrid=True, gridcolor="#F1F5F9"),
+        )
+        return fig
+
+    def make_static_2d(state):
+        xs_g, ys_g, Z_g = _get_grid_2d()
+        fig = go.Figure()
+        fig.add_trace(go.Contour(x=xs_g, y=ys_g, z=Z_g, colorscale="RdYlBu_r",
                                  contours=dict(coloring="heatmap", showlabels=False),
-                                 showscale=True,
-                                 colorbar=dict(thickness=12, len=0.85)))
+                                 showscale=True, colorbar=dict(thickness=12, len=0.85)))
         if state:
-            cx, cy = state["candidates"][:, 0], state["candidates"][:, 1]
-            label  = "Agent" if algo_name in SINGLE_AGENT else "Population"
-            if algo_name == "Ant Colony Optimization":
-                fig.add_trace(go.Scatter(
-                    x=cx, y=cy, mode="text",
-                    text=["🐜"] * len(cx), textfont=dict(size=18),
-                    name="Ants"))
-            else:
-                fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", name=label,
-                                         marker=dict(color="white", size=10, symbol="circle",
-                                                     line=dict(color="#1E293B", width=1.5))))
-            fig.add_trace(go.Scatter(
-                x=[state["best_pos"][0]], y=[state["best_pos"][1]],
-                mode="markers", name="Best",
-                marker=dict(color=C_BEST, size=19, symbol="star",
-                            line=dict(color="#78350F", width=1.5))))
-        fig.update_layout(**_L, height=440,
-                          title=dict(text=f"<b>{fn_obj.name}</b> — 2D landscape",
-                                     font=dict(size=14, color="#1E293B")),
-                          xaxis=dict(title="x₁", range=[b_min, b_max],
-                                     fixedrange=True, showgrid=False),
-                          yaxis=dict(title="x₂", range=[b_min, b_max],
-                                     fixedrange=True, showgrid=False))
+            fig.add_trace(_agent_trace_2d(state))
+            fig.add_trace(_best_trace_2d(state))
+        fig.update_layout(
+            **_L, height=440,
+            title=dict(text=f"<b>{fn_obj.name}</b> — 2D landscape",
+                       font=dict(size=14, color="#1E293B")),
+            xaxis=dict(title="x₁", range=[b_min, b_max], fixedrange=True, showgrid=False),
+            yaxis=dict(title="x₂", range=[b_min, b_max], fixedrange=True, showgrid=False),
+        )
         return fig
 
-    # — render main plot —
+    # — render —
     st.markdown('<div class="plot-box">', unsafe_allow_html=True)
-    fig = make_1d(state) if dims == 1 else make_2d(state)
+    if all_steps is not None:
+        fig = make_animated_1d(all_steps) if dims == 1 else make_animated_2d(all_steps)
+    else:
+        fig = make_static_1d(state) if dims == 1 else make_static_2d(state)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
                     key="opt_main_plot")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # — convergence —
-    if state and len(state["history"]) > 1:
+    hist = all_steps[-1]["history"] if all_steps else (state["history"] if state else None)
+    if hist and len(hist) > 1:
         conv = go.Figure()
-        conv.add_trace(go.Scatter(y=state["history"], mode="lines",
+        conv.add_trace(go.Scatter(y=hist, mode="lines",
                                   line=dict(color=C_CONV, width=2),
                                   fill="tozeroy", fillcolor="rgba(5,150,105,0.08)"))
         conv.update_layout(**_L, height=165,
                            title=dict(text="<b>Convergence</b> — best value vs iteration",
                                       font=dict(size=13, color="#1E293B")),
-                           xaxis=dict(title="Iteration", range=[0, n_iters],
-                                      fixedrange=True,
+                           xaxis=dict(title="Iteration", range=[0, n_iters], fixedrange=True,
                                       showgrid=True, gridcolor="#F1F5F9"),
                            yaxis=dict(title="f(best)", fixedrange=True,
                                       showgrid=True, gridcolor="#F1F5F9"),
@@ -444,7 +544,7 @@ with plot_col:
                         key="opt_conv_plot")
         st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.caption("Convergence chart appears after the first step.")
+        st.caption("Convergence chart appears after running.")
 
     # — algorithm description —
     with st.expander(f"ℹ️  {algo_name}  ·  {fn_name}"):
@@ -529,13 +629,3 @@ with stats_col:
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ─── animation loop (must stay last) ─────────────────────────────────────────
-
-if st.session_state.is_running:
-    state = st.session_state.opt_state
-    if state is None or state["iteration"] >= n_iters:
-        st.session_state.is_running = False
-    else:
-        st.session_state.opt_state = algo.step(state, config, fn_obj.fn)
-        time.sleep(delay)
-        st.rerun()

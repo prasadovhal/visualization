@@ -312,10 +312,10 @@ def plot_feature_importance(importances, feature_names, title="Feature Importanc
         x=importances[order], y=[feature_names[i] for i in order],
         orientation="h", marker_color=COLORS[0],
     ))
-    fig.update_layout(**_BASE, height=max(180, 25 * len(feature_names)),
+    _wide = {**_BASE, "margin": dict(l=120, r=12, t=44, b=12)}
+    fig.update_layout(**_wide, height=max(180, 25 * len(feature_names)),
                       title=dict(text=f"<b>{title}</b>", font=dict(size=13, color="#1E293B")),
-                      xaxis=dict(title="Importance"), yaxis=dict(title=""),
-                      margin=dict(l=120, r=12, t=44, b=12))
+                      xaxis=dict(title="Importance"), yaxis=dict(title=""))
     return fig
 
 # ─── Regression coefficients ───────────────────────────────────────────────────
@@ -327,10 +327,10 @@ def plot_coefficients(coef, feature_names, title="Coefficients"):
         x=coef[order], y=[feature_names[i] for i in order],
         orientation="h", marker_color=[colors[i] for i in order],
     ))
-    fig.update_layout(**_BASE, height=max(180, 25 * len(feature_names)),
+    _wide = {**_BASE, "margin": dict(l=120, r=12, t=44, b=12)}
+    fig.update_layout(**_wide, height=max(180, 25 * len(feature_names)),
                       title=dict(text=f"<b>{title}</b>", font=dict(size=13, color="#1E293B")),
-                      xaxis=dict(title="Coefficient value"), yaxis=dict(title=""),
-                      margin=dict(l=120, r=12, t=44, b=12))
+                      xaxis=dict(title="Coefficient value"), yaxis=dict(title=""))
     return fig
 
 # ─── Convergence / training scores ────────────────────────────────────────────
