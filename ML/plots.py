@@ -134,19 +134,23 @@ def plot_classification(X2d, y, model=None, feature_names=None,
 def plot_regression(X_train, y_train, X_test, y_test, model,
                     feature_name="x", target_name="y", title="",
                     show_residuals=True):
-    # For 1D: sort for smooth line
     is_1d = X_train.shape[1] == 1
     fig = go.Figure()
 
+    # Best fit line — always shown; for >1D vary feature 0, hold others at mean
+    x0_min = min(X_train[:, 0].min(), X_test[:, 0].min())
+    x0_max = max(X_train[:, 0].max(), X_test[:, 0].max())
+    x0_vals = np.linspace(x0_min - 0.5, x0_max + 0.5, 400)
     if is_1d:
-        x_range = np.linspace(
-            min(X_train[:, 0].min(), X_test[:, 0].min()) - 0.5,
-            max(X_train[:, 0].max(), X_test[:, 0].max()) + 0.5,
-            400).reshape(-1, 1)
-        y_line = model.predict(x_range)
-        fig.add_trace(go.Scatter(x=x_range[:, 0], y=y_line,
-                                 mode="lines", name="Model fit",
-                                 line=dict(color=C_BEST, width=2.5)))
+        X_line = x0_vals.reshape(-1, 1)
+    else:
+        means = X_train.mean(axis=0)
+        X_line = np.tile(means, (400, 1))
+        X_line[:, 0] = x0_vals
+    y_line = model.predict(X_line)
+    fig.add_trace(go.Scatter(x=x0_vals, y=y_line,
+                             mode="lines", name="Model fit",
+                             line=dict(color=C_BEST, width=2.5)))
 
     # Training scatter
     fig.add_trace(go.Scatter(
