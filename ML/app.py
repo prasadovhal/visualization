@@ -21,7 +21,8 @@ from models import (
 from plots import (
     plot_classification, plot_regression, plot_clustering,
     plot_confusion_matrix, plot_dendrogram_fig, plot_feature_importance,
-    plot_coefficients, plot_convergence, add_gmm_ellipses, COLORS,
+    plot_coefficients, plot_convergence, plot_actual_vs_predicted,
+    add_gmm_ellipses, COLORS,
 )
 
 # ─── page config ──────────────────────────────────────────────────────────────
@@ -554,6 +555,17 @@ with plot_col:
     if res:
         r = res
         show_secondary = False
+
+        # Actual vs Predicted (regression)
+        if res["task"] == "Regression":
+            y_tr_pred = r["model"].predict(r["X_train"])
+            show_secondary = True
+            st.markdown('<div class="plot-box" style="margin-top:0.5rem">',
+                        unsafe_allow_html=True)
+            st.plotly_chart(
+                plot_actual_vs_predicted(r["y_train"], y_tr_pred, r["y_test"], r["y_pred"]),
+                use_container_width=True, config={"displayModeBar": False})
+            st.markdown('</div>', unsafe_allow_html=True)
 
         # Confusion matrix
         if res["task"] == "Classification" and not res.get("is_multilabel", False):

@@ -333,6 +333,35 @@ def plot_coefficients(coef, feature_names, title="Coefficients"):
                       xaxis=dict(title="Coefficient value"), yaxis=dict(title=""))
     return fig
 
+# ─── Actual vs Predicted ──────────────────────────────────────────────────────
+
+def plot_actual_vs_predicted(y_train, y_train_pred, y_test, y_test_pred):
+    """Actual vs Predicted scatter with perfect-fit reference line."""
+    all_vals = np.concatenate([y_train, y_train_pred, y_test, y_test_pred])
+    lo, hi   = float(all_vals.min()), float(all_vals.max())
+    pad      = (hi - lo) * 0.06 or 0.5
+    ref      = [lo - pad, hi + pad]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=ref, y=ref, mode="lines", name="Perfect fit",
+        line=dict(color=C_BEST, width=2, dash="dash")))
+    fig.add_trace(go.Scatter(
+        x=y_train_pred, y=y_train, mode="markers", name="Train",
+        marker=dict(color=COLORS[0], size=7, opacity=0.7,
+                    line=dict(color="white", width=0.5))))
+    fig.add_trace(go.Scatter(
+        x=y_test_pred, y=y_test, mode="markers", name="Test",
+        marker=dict(color=COLORS[1], size=9, symbol="diamond",
+                    line=dict(color="white", width=0.5))))
+
+    fig.update_layout(**_BASE, height=300,
+                      title=dict(text="<b>Actual vs Predicted</b> — dashed = perfect fit",
+                                 font=dict(size=13, color="#1E293B")),
+                      xaxis=dict(title="Predicted", showgrid=True, gridcolor="#F1F5F9"),
+                      yaxis=dict(title="Actual",    showgrid=True, gridcolor="#F1F5F9"))
+    return fig
+
 # ─── Convergence / training scores ────────────────────────────────────────────
 
 def plot_convergence(scores, title="Training Score vs Estimators"):

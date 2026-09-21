@@ -366,11 +366,24 @@ with plot_col:
                 fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", name="Current",
                                          marker=dict(color=C_AGENT, size=13, symbol="circle",
                                                      line=dict(color="white", width=1.5))))
-            fig.add_trace(go.Scatter(
-                x=[state["best_pos"][0]], y=[state["best_val"]],
-                mode="markers", name="Best",
-                marker=dict(color=C_BEST, size=19, symbol="star",
-                            line=dict(color="#78350F", width=1.5))))
+            if algo_name == "Black Hole":
+                fig.add_trace(go.Scatter(
+                    x=[state["best_pos"][0]], y=[state["best_val"]],
+                    mode="markers", name="Black Hole", showlegend=False,
+                    marker=dict(color="rgba(15,23,42,0.15)", size=46, symbol="circle")))
+                fig.add_trace(go.Scatter(
+                    x=[state["best_pos"][0]], y=[state["best_val"]],
+                    mode="markers+text", name="Black Hole",
+                    text=["Black Hole"], textposition="middle right",
+                    textfont=dict(size=11, color="#0F172A"),
+                    marker=dict(color="#0F172A", size=30, symbol="circle",
+                                line=dict(color="#64748B", width=2))))
+            else:
+                fig.add_trace(go.Scatter(
+                    x=[state["best_pos"][0]], y=[state["best_val"]],
+                    mode="markers", name="Best",
+                    marker=dict(color=C_BEST, size=19, symbol="star",
+                                line=dict(color="#78350F", width=1.5))))
         fig.update_layout(**_L, height=400,
                           title=dict(text=f"<b>{fn_obj.name}</b> — 1D landscape",
                                      font=dict(size=14, color="#1E293B")),
@@ -403,11 +416,24 @@ with plot_col:
                 fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", name=label,
                                          marker=dict(color="white", size=10, symbol="circle",
                                                      line=dict(color="#1E293B", width=1.5))))
-            fig.add_trace(go.Scatter(
-                x=[state["best_pos"][0]], y=[state["best_pos"][1]],
-                mode="markers", name="Best",
-                marker=dict(color=C_BEST, size=19, symbol="star",
-                            line=dict(color="#78350F", width=1.5))))
+            if algo_name == "Black Hole":
+                fig.add_trace(go.Scatter(
+                    x=[state["best_pos"][0]], y=[state["best_pos"][1]],
+                    mode="markers", name="Black Hole", showlegend=False,
+                    marker=dict(color="rgba(15,23,42,0.15)", size=46, symbol="circle")))
+                fig.add_trace(go.Scatter(
+                    x=[state["best_pos"][0]], y=[state["best_pos"][1]],
+                    mode="markers+text", name="Black Hole",
+                    text=["Black Hole"], textposition="middle right",
+                    textfont=dict(size=11, color="#0F172A"),
+                    marker=dict(color="#0F172A", size=30, symbol="circle",
+                                line=dict(color="#64748B", width=2))))
+            else:
+                fig.add_trace(go.Scatter(
+                    x=[state["best_pos"][0]], y=[state["best_pos"][1]],
+                    mode="markers", name="Best",
+                    marker=dict(color=C_BEST, size=19, symbol="star",
+                                line=dict(color="#78350F", width=1.5))))
         fig.update_layout(**_L, height=440,
                           title=dict(text=f"<b>{fn_obj.name}</b> — 2D landscape",
                                      font=dict(size=14, color="#1E293B")),
