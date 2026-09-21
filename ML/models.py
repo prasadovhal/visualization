@@ -191,28 +191,30 @@ def make_regressor(name, p, seed=42):
     if name == "Linear Regression":
         return LinearRegression()
     if name == "Ridge":
-        return Ridge(alpha=p["alpha"])
+        return Ridge(alpha=p.get("alpha", 1.0))
     if name == "Lasso":
-        return Lasso(alpha=p["alpha"], max_iter=5000)
+        return Lasso(alpha=p.get("alpha", 1.0), max_iter=5000)
     if name == "Elastic Net":
-        return ElasticNet(alpha=p["alpha"], l1_ratio=p["l1_ratio"], max_iter=5000)
+        return ElasticNet(alpha=p.get("alpha", 1.0), l1_ratio=p.get("l1_ratio", 0.5), max_iter=5000)
     if name == "KNN Regressor":
-        return KNeighborsRegressor(n_neighbors=p["K"], metric=p["metric"], weights=p["weights"])
+        return KNeighborsRegressor(n_neighbors=p.get("K", 5), metric=p.get("metric", "euclidean"),
+                                   weights=p.get("weights", "uniform"))
     if name == "Decision Tree Regressor":
-        return DecisionTreeRegressor(max_depth=p["max_depth"] or None,
-                                     min_samples_split=p["min_samples_split"],
+        return DecisionTreeRegressor(max_depth=p.get("max_depth", 5) or None,
+                                     min_samples_split=p.get("min_samples_split", 2),
                                      random_state=seed)
     if name == "Random Forest Regressor":
-        return RandomForestRegressor(n_estimators=p["n_estimators"],
-                                     max_depth=p["max_depth"] or None,
-                                     max_features=p["max_features"], random_state=seed)
+        return RandomForestRegressor(n_estimators=p.get("n_estimators", 100),
+                                     max_depth=p.get("max_depth", None) or None,
+                                     max_features=p.get("max_features", "sqrt"), random_state=seed)
     if name == "SVR":
-        g = p["gamma"]
+        g = p.get("gamma", "scale")
         gamma = float(g) if g not in ("scale", "auto") else g
-        return SVR(kernel=p["kernel"], C=p["C"], gamma=gamma)
+        return SVR(kernel=p.get("kernel", "rbf"), C=p.get("C", 1.0), gamma=gamma)
     if name == "Gradient Boosting Regressor":
-        return GradientBoostingRegressor(n_estimators=p["n_estimators"],
-                                         learning_rate=p["lr"], max_depth=p["max_depth"],
+        return GradientBoostingRegressor(n_estimators=p.get("n_estimators", 100),
+                                         learning_rate=p.get("lr", 0.1),
+                                         max_depth=p.get("max_depth", 3),
                                          random_state=seed)
     raise ValueError(name)
 
