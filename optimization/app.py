@@ -468,32 +468,48 @@ with stats_col:
             ca.metric("Min",  f"{np.min(v):.4g}")
             cb.metric("Max",  f"{np.max(v):.4g}")
 
-        # ── ACO pheromone distribution ──
+        # ── ACO pheromone matrix ──
         if algo_name == "Ant Colony Optimization" and "arch_weights" in state:
             st.divider()
-            st.caption("**🐜 Pheromone weights**")
-            w  = state["arch_weights"]
-            k  = len(w)
-            wmax = w.max() if w.max() > 0 else 1
-            colors = [f"rgba(37,99,235,{0.25 + 0.75 * wi / wmax:.2f})" for wi in w]
-            ph_fig = go.Figure(go.Bar(
-                x=list(range(1, k + 1)), y=w,
-                marker_color=colors, showlegend=False,
-            ))
-            ph_fig.update_layout(
-                template="simple_white",
-                plot_bgcolor="#FFFFFF", paper_bgcolor="#F8FAFC",
-                height=130,
-                margin=dict(l=4, r=4, t=24, b=28),
-                title=dict(text="Archive rank  →  weight",
-                           font=dict(size=9, color="#94A3B8"), x=0),
-                xaxis=dict(title="Rank", tickfont=dict(size=8), title_font=dict(size=9)),
-                yaxis=dict(title="Weight", tickfont=dict(size=8), title_font=dict(size=9)),
-                font=dict(size=9),
-            )
-            st.plotly_chart(ph_fig, use_container_width=True,
-                            config={"displayModeBar": False})
-            st.caption("Rank 1 = best archive member (highest pheromone).")
+            st.caption("**🐜 Pheromone Matrix**")
+            w    = state["arch_weights"]
+            arch = state["archive"]
+            k, d = arch.shape
+            if k <= 6:
+                # Rows = archive rank, cols = dimensions
+                # Cell color = pheromone weight; cell text = coordinate value
+                z_mat   = np.tile(w.reshape(-1, 1), (1, d))
+                txt_mat = [[f"{arch[i, j]:.3f}" for j in range(d)] for i in range(k)]
+                col_hdr = [f"x{j+1}" for j in range(d)] if d > 1 else ["x"]
+                row_hdr = [f"R{i+1}  φ={w[i]:.3f}" for i in range(k)]
+                ph_fig  = go.Figure(go.Heatmap(
+                    z=z_mat, x=col_hdr, y=row_hdr,
+                    colorscale=[[0, "#EFF6FF"], [1, "#1D4ED8"]],
+                    showscale=False,
+                    zmin=0, zmax=float(w.max()),
+                    text=txt_mat, texttemplate="%{text}",
+                    textfont=dict(size=10, color="#1E293B"),
+                ))
+                ph_fig.update_layout(
+                    template="simple_white",
+                    plot_bgcolor="#FFFFFF", paper_bgcolor="#F8FAFC",
+                    height=max(130, 38 * k + 40),
+                    margin=dict(l=4, r=4, t=28, b=4),
+                    title=dict(text="φ = pheromone · value = position",
+                               font=dict(size=9, color="#94A3B8"), x=0),
+                    xaxis=dict(side="top", tickfont=dict(size=9)),
+                    yaxis=dict(autorange="reversed", tickfont=dict(size=9)),
+                    font=dict(size=9),
+                )
+                st.plotly_chart(ph_fig, use_container_width=True,
+                                config={"displayModeBar": False})
+                st.caption("R1 = best (darkest = strongest pheromone).")
+            else:
+                st.info(
+                    f"Colony size {k} > 6 — matrix too large to display. "
+                    "Reduce colony size to ≤ 6 to see the matrix.",
+                    icon="🐜"
+                )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
