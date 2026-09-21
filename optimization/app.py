@@ -14,11 +14,18 @@ st.set_page_config(layout="wide", page_title="Optimization Visualizer", page_ico
 
 st.markdown("""
 <style>
-/* ── Streamlit top bar: keep it (it holds the sidebar toggle) but make it
-       transparent and hide the share/settings buttons inside it ── */
-[data-testid="stHeader"]  { background: transparent !important; border-bottom: none !important; box-shadow: none !important; }
-[data-testid="stToolbar"] { display: none !important; }
+/* ── Streamlit top bar: transparent, hide only the share/settings buttons ── */
+[data-testid="stHeader"]     { background: transparent !important; border-bottom: none !important; box-shadow: none !important; }
+[data-testid="stToolbar"]    { display: none !important; }
 [data-testid="stDecoration"] { display: none !important; }
+
+/* ── always show the sidebar collapse/expand toggle button ── */
+[data-testid="collapsedControl"] {
+    display:    flex       !important;
+    visibility: visible    !important;
+    opacity:    1          !important;
+    z-index:    999999     !important;
+}
 
 /* ── layout: push content below the (now invisible) header bar ── */
 .block-container { padding-top: 3.8rem !important; padding-bottom: 0.5rem !important; }
