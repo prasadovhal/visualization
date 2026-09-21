@@ -418,6 +418,9 @@ else:
 res   = st.session_state.result
 steps = st.session_state.steps
 
+# shared dict populated by whichever compare block runs; read by metrics panel
+_cmp = {}
+
 # ══════════════════════ CENTRE: visualization ═════════════════════════════════
 
 with plot_col:
@@ -494,6 +497,7 @@ with plot_col:
             if algo2 == "GMM" and m2 is not None:
                 fig2 = add_gmm_ellipses(fig2, m2)
             st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+            _cmp.update({"task": "Clustering", "algo": algo2, "labels": lbs2, "X2d": X2d})
 
     # ── Classification ──
     elif res and res["task"] == "Classification":
@@ -552,6 +556,10 @@ with plot_col:
             st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
             acc2 = sk_metrics.accuracy_score(r["y_test"], y_pred2)
             st.caption(f"{algo2} test accuracy: **{acc2:.3f}**")
+            y_prob2 = m2.predict_proba(r["X_test"]) if hasattr(m2, "predict_proba") else None
+            _cmp.update({"task": "Classification", "algo": algo2,
+                         "y_test": r["y_test"], "y_pred": y_pred2, "y_prob": y_prob2,
+                         "class_names": r["class_names"]})
 
     # ── Regression ──
     elif res and res["task"] == "Regression":
@@ -582,6 +590,8 @@ with plot_col:
             st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
             r2_score = sk_metrics.r2_score(r["y_test"], y_pred2)
             st.caption(f"{algo2} test R²: **{r2_score:.3f}**")
+            _cmp.update({"task": "Regression", "algo": algo2,
+                         "y_test": r["y_test"], "y_pred": y_pred2})
 
     # ── Non-step Clustering ──
     elif res and res["task"] == "Clustering":
@@ -647,6 +657,7 @@ with plot_col:
             if algo2 == "GMM" and m2 is not None:
                 fig2 = add_gmm_ellipses(fig2, m2)
             st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+            _cmp.update({"task": "Clustering", "algo": algo2, "labels": lbs2, "X2d": X2d})
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -806,6 +817,46 @@ with info_col:
                 pass
         if hasattr(res.get("model"), "inertia_"):
             st.metric("Inertia", f"{res['model'].inertia_:.2f}")
+
+    # Compare mode: algo2 metrics
+    if _cmp:
+        st.divider()
+        st.markdown(f"**{_cmp['algo']}** *(compare)*")
+        if _cmp["task"] == "Classification":
+            y_te2, y_pr2 = _cmp["y_test"], _cmp["y_pred"]
+            avg2 = "binary" if len(np.unique(y_te2)) == 2 else "macro"
+            cn2  = _cmp.get("class_names") or [str(c) for c in np.unique(y_te2)]
+            st.metric("Accuracy",  f"{sk_metrics.accuracy_score(y_te2, y_pr2):.3f}")
+            st.metric("Precision", f"{sk_metrics.precision_score(y_te2, y_pr2, average=avg2, zero_division=0):.3f}")
+            st.metric("Recall",    f"{sk_metrics.recall_score(y_te2, y_pr2, average=avg2, zero_division=0):.3f}")
+            st.metric("F1 Score",  f"{sk_metrics.f1_score(y_te2, y_pr2, average=avg2, zero_division=0):.3f}")
+            yp2 = _cmp.get("y_prob")
+            if yp2 is not None and len(np.unique(y_te2)) == 2:
+                st.metric("ROC AUC", f"{sk_metrics.roc_auc_score(y_te2, yp2[:, 1]):.3f}")
+        elif _cmp["task"] == "Regression":
+            y_te2, y_pr2 = _cmp["y_test"], _cmp["y_pred"]
+            mse2 = sk_metrics.mean_squared_error(y_te2, y_pr2)
+            st.metric("MAE",  f"{sk_metrics.mean_absolute_error(y_te2, y_pr2):.4g}")
+            st.metric("MSE",  f"{mse2:.4g}")
+            st.metric("RMSE", f"{np.sqrt(mse2):.4g}")
+            st.metric("R²",   f"{sk_metrics.r2_score(y_te2, y_pr2):.4f}")
+            st.metric("Expl. Variance", f"{sk_metrics.explained_variance_score(y_te2, y_pr2):.4f}")
+            try:
+                st.metric("MAPE", f"{sk_metrics.mean_absolute_percentage_error(y_te2, y_pr2)*100:.2f}%")
+            except Exception:
+                pass
+        elif _cmp["task"] == "Clustering":
+            lbs2, X2d2 = _cmp["labels"], _cmp["X2d"]
+            n_cls2 = len(np.unique(lbs2[lbs2 != -1]))
+            st.metric("Clusters found", n_cls2)
+            noise2 = int((lbs2 == -1).sum())
+            if noise2 > 0:
+                st.metric("Noise points", noise2)
+            if n_cls2 > 1:
+                try:
+                    st.metric("Silhouette", f"{sk_metrics.silhouette_score(X2d2, lbs2):.3f}")
+                except Exception:
+                    pass
 
     # PCA note
     if res and res.get("pca") is not None:
