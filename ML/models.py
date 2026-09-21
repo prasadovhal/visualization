@@ -222,12 +222,14 @@ def make_regressor(name, p, seed=42):
 
 def make_cluster_model(name, p, seed=42):
     if name == "DBSCAN":
-        return DBSCAN(eps=p["eps"], min_samples=p["min_samples"], metric=p["metric"])
+        return DBSCAN(eps=p.get("eps", 0.5), min_samples=p.get("min_samples", 5),
+                      metric=p.get("metric", "euclidean"))
     if name == "Hierarchical":
-        return AgglomerativeClustering(n_clusters=p["n_clusters"], linkage=p["linkage"])
+        return AgglomerativeClustering(n_clusters=p.get("n_clusters", 3),
+                                       linkage=p.get("linkage", "ward"))
     if name == "GMM":
-        return GaussianMixture(n_components=p["n_components"],
-                               covariance_type=p["cov_type"],
+        return GaussianMixture(n_components=p.get("n_components", 3),
+                               covariance_type=p.get("cov_type", "full"),
                                max_iter=200, random_state=seed)
     return None
 

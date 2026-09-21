@@ -567,6 +567,47 @@ with plot_col:
             fig = add_gmm_ellipses(fig, r["model"])
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
+        # Compare mode: second clustering algorithm
+        if compare_mode and algo2:
+            st.divider()
+            st.caption(f"**{algo2}** (default params)")
+            lbs2, cens2, m2 = None, None, None
+
+            if algo2 in STEP_ALGOS:
+                k2, mx2 = 3, 30
+                if algo2 == "K-Means":
+                    steps2 = kmeans_steps(X2d, k2, "k-means++", mx2, seed)
+                elif algo2 == "K-Medians":
+                    steps2 = kmedians_steps(X2d, k2, mx2, seed)
+                elif algo2 == "K-Medoids":
+                    steps2 = kmedoids_steps(X2d, k2, mx2, seed)
+                elif algo2 == "K-Modes":
+                    steps2 = kmodes_steps(X2d.astype(int), k2, 20, seed)
+                final2 = steps2[-1]
+                lbs2  = final2["labels"]
+                cens2 = final2.get("centroids")
+            else:
+                m2   = make_cluster_model(algo2, {}, seed)
+                lbs2 = m2.fit_predict(X2d)
+                cens2 = getattr(m2, "cluster_centers_", None)
+                if cens2 is None and algo2 == "GMM":
+                    cens2 = m2.means_
+
+            db_types2 = None
+            if algo2 == "DBSCAN" and m2 is not None:
+                core2 = set(m2.core_sample_indices_)
+                db_types2 = np.array(
+                    ["core" if i in core2 else ("border" if lbs2[i] != -1 else "noise")
+                     for i in range(len(lbs2))])
+
+            fig2 = plot_clustering(X2d, lbs2, centroids=cens2,
+                                   feature_names=r["feature_names"],
+                                   title=f"{algo2}  ·  {ds_name}",
+                                   dbscan_types=db_types2)
+            if algo2 == "GMM" and m2 is not None:
+                fig2 = add_gmm_ellipses(fig2, m2)
+            st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Secondary visualization ──
