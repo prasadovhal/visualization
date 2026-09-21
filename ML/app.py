@@ -525,6 +525,24 @@ with plot_col:
         )
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
+        # Compare mode: second regression algorithm
+        if compare_mode and algo2:
+            st.divider()
+            st.caption(f"**{algo2}** (default params)")
+            m2 = make_regressor(algo2, {}, seed)
+            m2.fit(r["X_train"], r["y_train"])
+            y_pred2 = m2.predict(r["X_test"])
+            fig2 = plot_regression(
+                r["X_train"], r["y_train"],
+                r["X_test"],  r["y_test"],
+                m2,
+                feature_name=r["feature_names"][0] if r["feature_names"] else "x",
+                title=f"{algo2}  ·  {ds_name}",
+            )
+            st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+            r2_score = sk_metrics.r2_score(r["y_test"], y_pred2)
+            st.caption(f"{algo2} test R²: **{r2_score:.3f}**")
+
     # ── Non-step Clustering ──
     elif res and res["task"] == "Clustering":
         r    = res
