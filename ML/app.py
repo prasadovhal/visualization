@@ -303,7 +303,7 @@ if st.session_state.run_key != cfg_key:
 
 def prepare_2d(X, feat_names):
     """Return (X2d, feat_names_2d, pca_obj_or_None)."""
-    if X is None or X.shape[1] == 2:
+    if X is None or X.shape[1] <= 2:
         return X, feat_names, None
     if use_pca:
         scaler = StandardScaler()
