@@ -1,10 +1,66 @@
+import ast
+import math
 import time
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
-from functions import FUNCTIONS
+from functions import FUNCTIONS, ObjFn
 from algorithms import ALGORITHMS
+
+# ─── custom function validator ────────────────────────────────────────────────
+
+_SAFE_NS = {
+    "__builtins__": {},
+    "np": np, "math": math,
+    "sin": np.sin, "cos": np.cos, "tan": np.tan,
+    "exp": np.exp, "log": np.log, "log2": np.log2, "log10": np.log10,
+    "sqrt": np.sqrt, "abs": np.abs, "pi": np.pi, "e": np.e,
+    "inf": np.inf, "nan": np.nan,
+}
+_ALLOWED_NAMES = set(_SAFE_NS.keys()) | {"x", "y"}
+
+
+def _validate_custom(expr, dims):
+    """Return (callable, error_str). callable is None on failure."""
+    try:
+        tree = ast.parse(expr.strip(), mode="eval")
+    except SyntaxError as err:
+        return None, f"Syntax error: {err.msg}"
+
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    bad = names - _ALLOWED_NAMES
+    if bad:
+        return None, f"Unknown names: {sorted(bad)}. Use x, y, np.sin/cos/exp/log/sqrt/…, pi, e."
+    if dims == 1 and "y" in names:
+        return None, "1D selected — only 'x' is allowed. Remove 'y'."
+    if dims == 2 and names <= {"y"} and "x" not in names:
+        return None, "2D selected — expression must use at least 'x'."
+
+    if dims == 1:
+        def fn(pos):
+            try:
+                v = float(eval(expr, _SAFE_NS, {"x": float(pos[0])}))
+                return v if np.isfinite(v) else 1e10
+            except Exception:
+                return 1e10
+    else:
+        def fn(pos):
+            try:
+                v = float(eval(expr, _SAFE_NS, {"x": float(pos[0]), "y": float(pos[1])}))
+                return v if np.isfinite(v) else 1e10
+            except Exception:
+                return 1e10
+
+    # smoke-test at origin
+    try:
+        result = fn(np.zeros(dims))
+        if result == 1e10:
+            return None, "Function returned non-finite value at x=0. Check expression."
+    except Exception as err:
+        return None, f"Evaluation failed: {err}"
+
+    return fn, None
 
 # ─── page config ──────────────────────────────────────────────────────────────
 
@@ -109,14 +165,35 @@ with ctrl_col:
 
     dims = st.radio("Dimensions", [1, 2], horizontal=True)
 
-    fn_choices = [n for n, f in FUNCTIONS.items() if dims in f.dims]
+    fn_choices = [n for n, f in FUNCTIONS.items() if dims in f.dims] + ["Custom..."]
     fn_name = st.selectbox("Function", fn_choices, label_visibility="collapsed")
-    fn_obj = FUNCTIONS[fn_name]
+
+    # ── custom function input ──
+    custom_expr = ""
+    custom_fn   = None
+    if fn_name == "Custom...":
+        _ph = "x**2 + np.sin(3*x)" if dims == 1 else "x**2 + y**2"
+        _lbl = "f(x) =" if dims == 1 else "f(x, y) ="
+        custom_expr = st.text_input(_lbl, placeholder=_ph, key=f"cexpr_{dims}",
+                                    label_visibility="visible")
+        if custom_expr.strip():
+            custom_fn, _cerr = _validate_custom(custom_expr.strip(), dims)
+            if _cerr:
+                st.error(_cerr, icon="🚫")
+            else:
+                st.success("Valid expression", icon="✅")
+        else:
+            st.caption("Enter expression using `x`" + (" or `x`, `y`" if dims == 2 else "") + ".")
+
+    _def_bounds = FUNCTIONS[fn_name].bounds if fn_name != "Custom..." else (-5.0, 5.0)
+    fn_obj = FUNCTIONS[fn_name] if fn_name != "Custom..." else ObjFn(
+        "Custom", custom_fn, [dims], _def_bounds, custom_expr or "User-defined function"
+    )
 
     st.markdown('<div class="ctrl-section">Search Space</div>', unsafe_allow_html=True)
     bc1, bc2 = st.columns(2)
-    b_min = bc1.number_input("Min", value=float(fn_obj.bounds[0]), step=0.5, format="%.1f")
-    b_max = bc2.number_input("Max", value=float(fn_obj.bounds[1]), step=0.5, format="%.1f")
+    b_min = bc1.number_input("Min", value=float(_def_bounds[0]), step=0.5, format="%.1f")
+    b_max = bc2.number_input("Max", value=float(_def_bounds[1]), step=0.5, format="%.1f")
 
     st.markdown('<div class="ctrl-section">Run Settings</div>', unsafe_allow_html=True)
     n_iters = st.slider("Iterations", 20, 1000, 150)
@@ -165,8 +242,13 @@ if b_min >= b_max:
         st.error("Bounds min must be less than max.")
     st.stop()
 
+if fn_name == "Custom..." and custom_fn is None:
+    with plot_col:
+        st.info("Enter a valid function expression in the left panel.", icon="✏️")
+    st.stop()
+
 config  = {"dims": dims, "bounds": (b_min, b_max), "seed": seed, **extra}
-run_key = f"{algo_name}|{fn_name}|{dims}"
+run_key = f"{algo_name}|{fn_name}|{dims}|{custom_expr}"
 if st.session_state.run_key != run_key:
     st.session_state.opt_state  = None
     st.session_state.is_running = False
@@ -222,7 +304,7 @@ with plot_col:
     else:
         st.progress(0.0, text="Press ▶ Run or ⏭ Step to start")
 
-    # — cached grids —
+    # — cached grids (built-in functions) —
     @st.cache_data
     def _curve_1d(fn_name, b_min, b_max):
         fn = FUNCTIONS[fn_name].fn
@@ -237,6 +319,20 @@ with plot_col:
         Z  = np.array([[fn(np.array([x, y])) for x in xs] for y in ys])
         return xs, ys, Z
 
+    def _get_curve_1d():
+        if fn_name == "Custom...":
+            xs = np.linspace(b_min, b_max, 500)
+            return xs, np.array([fn_obj.fn(np.array([x])) for x in xs])
+        return _curve_1d(fn_name, b_min, b_max)
+
+    def _get_grid_2d(n=70):
+        if fn_name == "Custom...":
+            xs = np.linspace(b_min, b_max, n)
+            ys = np.linspace(b_min, b_max, n)
+            Z  = np.array([[fn_obj.fn(np.array([x, y])) for x in xs] for y in ys])
+            return xs, ys, Z
+        return _grid_2d(fn_name, b_min, b_max)
+
     # — color palette —
     _L = dict(
         template="simple_white",
@@ -250,15 +346,21 @@ with plot_col:
 
     # — 1D plot —
     def make_1d(state):
-        xs, ys = _curve_1d(fn_name, b_min, b_max)
+        xs, ys = _get_curve_1d()
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", name=fn_obj.name,
                                  line=dict(color=C_CURVE, width=2.5)))
         if state:
             cx, cy = state["candidates"][:, 0], state["values"]
-            fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", name="Current",
-                                     marker=dict(color=C_AGENT, size=13, symbol="circle",
-                                                 line=dict(color="white", width=1.5))))
+            if algo_name == "Ant Colony Optimization":
+                fig.add_trace(go.Scatter(
+                    x=cx, y=cy, mode="text",
+                    text=["🐜"] * len(cx), textfont=dict(size=16),
+                    name="Ants"))
+            else:
+                fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", name="Current",
+                                         marker=dict(color=C_AGENT, size=13, symbol="circle",
+                                                     line=dict(color="white", width=1.5))))
             fig.add_trace(go.Scatter(
                 x=[state["best_pos"][0]], y=[state["best_val"]],
                 mode="markers", name="Best",
@@ -274,7 +376,7 @@ with plot_col:
 
     # — 2D plot —
     def make_2d(state):
-        xs, ys, Z = _grid_2d(fn_name, b_min, b_max)
+        xs, ys, Z = _get_grid_2d()
         fig = go.Figure()
         fig.add_trace(go.Contour(x=xs, y=ys, z=Z, colorscale="RdYlBu_r",
                                  contours=dict(coloring="heatmap", showlabels=False),
@@ -283,9 +385,15 @@ with plot_col:
         if state:
             cx, cy = state["candidates"][:, 0], state["candidates"][:, 1]
             label  = "Agent" if algo_name in SINGLE_AGENT else "Population"
-            fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", name=label,
-                                     marker=dict(color="white", size=10, symbol="circle",
-                                                 line=dict(color="#1E293B", width=1.5))))
+            if algo_name == "Ant Colony Optimization":
+                fig.add_trace(go.Scatter(
+                    x=cx, y=cy, mode="text",
+                    text=["🐜"] * len(cx), textfont=dict(size=18),
+                    name="Ants"))
+            else:
+                fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", name=label,
+                                         marker=dict(color="white", size=10, symbol="circle",
+                                                     line=dict(color="#1E293B", width=1.5))))
             fig.add_trace(go.Scatter(
                 x=[state["best_pos"][0]], y=[state["best_pos"][1]],
                 mode="markers", name="Best",
@@ -359,6 +467,33 @@ with stats_col:
             cb.metric("Std",  f"{np.std(v):.4g}")
             ca.metric("Min",  f"{np.min(v):.4g}")
             cb.metric("Max",  f"{np.max(v):.4g}")
+
+        # ── ACO pheromone distribution ──
+        if algo_name == "Ant Colony Optimization" and "arch_weights" in state:
+            st.divider()
+            st.caption("**🐜 Pheromone weights**")
+            w  = state["arch_weights"]
+            k  = len(w)
+            wmax = w.max() if w.max() > 0 else 1
+            colors = [f"rgba(37,99,235,{0.25 + 0.75 * wi / wmax:.2f})" for wi in w]
+            ph_fig = go.Figure(go.Bar(
+                x=list(range(1, k + 1)), y=w,
+                marker_color=colors, showlegend=False,
+            ))
+            ph_fig.update_layout(
+                template="simple_white",
+                plot_bgcolor="#FFFFFF", paper_bgcolor="#F8FAFC",
+                height=130,
+                margin=dict(l=4, r=4, t=24, b=28),
+                title=dict(text="Archive rank  →  weight",
+                           font=dict(size=9, color="#94A3B8"), x=0),
+                xaxis=dict(title="Rank", tickfont=dict(size=8), title_font=dict(size=9)),
+                yaxis=dict(title="Weight", tickfont=dict(size=8), title_font=dict(size=9)),
+                font=dict(size=9),
+            )
+            st.plotly_chart(ph_fig, use_container_width=True,
+                            config={"displayModeBar": False})
+            st.caption("Rank 1 = best archive member (highest pheromone).")
 
     st.markdown('</div>', unsafe_allow_html=True)
 

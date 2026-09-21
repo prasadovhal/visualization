@@ -295,15 +295,20 @@ class AntColony:
     def initialize(self, config, fn):
         rng = np.random.default_rng(config["seed"])
         k = config.get("archive_size", 10)
+        q = config.get("q", 0.5)
         archive = _rand_pop(k, config["dims"], config["bounds"], rng)
         arch_vals = _eval_all(archive, fn)
         order = np.argsort(arch_vals)
         archive, arch_vals = archive[order], arch_vals[order]
+        ranks = np.arange(1, k + 1, dtype=float)
+        w = np.exp(-((ranks - 1) ** 2) / (2 * q**2 * k**2))
+        w /= w.sum()
         return dict(
             iteration=0, candidates=archive.copy(), values=arch_vals.copy(),
             best_pos=archive[0].copy(), best_val=float(arch_vals[0]),
             history=[float(arch_vals[0])], n_evals=k, rng=rng,
             archive=archive.copy(), arch_vals=arch_vals.copy(),
+            arch_weights=w.copy(),
         )
 
     def step(self, state, config, fn):
@@ -346,7 +351,8 @@ class AntColony:
                 "best_pos": best_pos, "best_val": best_val,
                 "history": state["history"] + [best_val],
                 "n_evals": state["n_evals"] + n,
-                "archive": archive, "arch_vals": arch_vals}
+                "archive": archive, "arch_vals": arch_vals,
+                "arch_weights": w.copy()}
 
 
 # ─── Black Hole Algorithm ─────────────────────────────────────────────────────
