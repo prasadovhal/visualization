@@ -14,8 +14,12 @@ st.set_page_config(layout="wide", page_title="Optimization Visualizer", page_ico
 
 st.markdown("""
 <style>
+/* ── hide Streamlit's default top toolbar so our header isn't covered ── */
+[data-testid="stHeader"]  { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
+
 /* ── layout ── */
-.block-container { padding-top: 0.6rem !important; padding-bottom: 0.5rem !important; }
+.block-container { padding-top: 0.8rem !important; padding-bottom: 0.5rem !important; }
 
 /* ── sidebar ── */
 [data-testid="stSidebar"] > div:first-child {
