@@ -436,8 +436,9 @@ with plot_col:
                   _agent_trace_1d(s0), _best_trace_1d(s0)],
             frames=frames,
         )
+        _L1 = {**_L, "margin": dict(l=12, r=12, t=44, b=60)}
         fig.update_layout(
-            **_L, height=430,
+            **_L1, height=430,
             title=dict(text=f"<b>{fn_obj.name}</b> — 1D landscape",
                        font=dict(size=14, color="#1E293B")),
             xaxis=dict(title="x", range=[b_min, b_max], fixedrange=True,
@@ -447,7 +448,6 @@ with plot_col:
                        showgrid=True, gridcolor="#F1F5F9"),
             updatemenus=_anim_menus(),
             sliders=_anim_slider(len(steps)),
-            margin=dict(l=12, r=12, t=44, b=60),
         )
         return fig
 
@@ -464,15 +464,15 @@ with plot_col:
                   _agent_trace_2d(s0), _best_trace_2d(s0)],
             frames=frames,
         )
+        _L2 = {**_L, "margin": dict(l=12, r=12, t=44, b=60)}
         fig.update_layout(
-            **_L, height=470,
+            **_L2, height=470,
             title=dict(text=f"<b>{fn_obj.name}</b> — 2D landscape",
                        font=dict(size=14, color="#1E293B")),
             xaxis=dict(title="x₁", range=[b_min, b_max], fixedrange=True, showgrid=False),
             yaxis=dict(title="x₂", range=[b_min, b_max], fixedrange=True, showgrid=False),
             updatemenus=_anim_menus(),
             sliders=_anim_slider(len(steps)),
-            margin=dict(l=12, r=12, t=44, b=60),
         )
         return fig
 
