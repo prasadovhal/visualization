@@ -344,11 +344,16 @@ with plot_col:
     )
     C_CURVE, C_AGENT, C_BEST, C_CONV = "#2563EB", "#DC2626", "#D97706", "#059669"
 
+    # — stable y-range for 1D (computed once from the curve, not per-step) —
+    _xs1d, _ys1d = _get_curve_1d()
+    _y_pad  = max(abs(_ys1d.max() - _ys1d.min()) * 0.12, 0.1)
+    _y_lo   = float(_ys1d.min() - _y_pad)
+    _y_hi   = float(_ys1d.max() + _y_pad)
+
     # — 1D plot —
     def make_1d(state):
-        xs, ys = _get_curve_1d()
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", name=fn_obj.name,
+        fig.add_trace(go.Scatter(x=_xs1d, y=_ys1d, mode="lines", name=fn_obj.name,
                                  line=dict(color=C_CURVE, width=2.5)))
         if state:
             cx, cy = state["candidates"][:, 0], state["values"]
@@ -369,9 +374,13 @@ with plot_col:
         fig.update_layout(**_L, height=400,
                           title=dict(text=f"<b>{fn_obj.name}</b> — 1D landscape",
                                      font=dict(size=14, color="#1E293B")),
-                          xaxis=dict(title="x", showgrid=True, gridcolor="#F1F5F9",
+                          xaxis=dict(title="x", range=[b_min, b_max],
+                                     fixedrange=True,
+                                     showgrid=True, gridcolor="#F1F5F9",
                                      zeroline=True, zerolinecolor="#CBD5E1"),
-                          yaxis=dict(title="f(x)", showgrid=True, gridcolor="#F1F5F9"))
+                          yaxis=dict(title="f(x)", range=[_y_lo, _y_hi],
+                                     fixedrange=True,
+                                     showgrid=True, gridcolor="#F1F5F9"))
         return fig
 
     # — 2D plot —
@@ -402,14 +411,17 @@ with plot_col:
         fig.update_layout(**_L, height=440,
                           title=dict(text=f"<b>{fn_obj.name}</b> — 2D landscape",
                                      font=dict(size=14, color="#1E293B")),
-                          xaxis=dict(title="x₁", range=[b_min, b_max], showgrid=False),
-                          yaxis=dict(title="x₂", range=[b_min, b_max], showgrid=False))
+                          xaxis=dict(title="x₁", range=[b_min, b_max],
+                                     fixedrange=True, showgrid=False),
+                          yaxis=dict(title="x₂", range=[b_min, b_max],
+                                     fixedrange=True, showgrid=False))
         return fig
 
     # — render main plot —
     st.markdown('<div class="plot-box">', unsafe_allow_html=True)
     fig = make_1d(state) if dims == 1 else make_2d(state)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
+                    key="opt_main_plot")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # — convergence —
@@ -421,11 +433,15 @@ with plot_col:
         conv.update_layout(**_L, height=165,
                            title=dict(text="<b>Convergence</b> — best value vs iteration",
                                       font=dict(size=13, color="#1E293B")),
-                           xaxis=dict(title="Iteration", showgrid=True, gridcolor="#F1F5F9"),
-                           yaxis=dict(title="f(best)",   showgrid=True, gridcolor="#F1F5F9"),
+                           xaxis=dict(title="Iteration", range=[0, n_iters],
+                                      fixedrange=True,
+                                      showgrid=True, gridcolor="#F1F5F9"),
+                           yaxis=dict(title="f(best)", fixedrange=True,
+                                      showgrid=True, gridcolor="#F1F5F9"),
                            showlegend=False)
         st.markdown('<div class="plot-box" style="margin-top:0.5rem">', unsafe_allow_html=True)
-        st.plotly_chart(conv, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(conv, use_container_width=True, config={"displayModeBar": False},
+                        key="opt_conv_plot")
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.caption("Convergence chart appears after the first step.")
